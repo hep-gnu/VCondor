@@ -55,16 +55,26 @@ $cd Vcondor
 $python VCondorMain.py
 
 ## Workflow
-![workflow](http://note.youdao.com/noteshare?id=c681252c8980611c6605daed2712458e)
 
+![workflow](http://note.youdao.com/yws/public/resource/c681252c8980611c6605daed2712458e/xmlnote/A5424A1C4B32454EA4B7ABC93D88814D/9630)
 
-1.An user in Group1 submit a batch of jobs.
-2.The jobs come into condor pool.Diffrent job is in diffrent queue. 
-3.Vcondor regularly checks job information and job queue changes in the condor to find the queue job.
-4.Vcondor request vmquota to get available resource for the Group1 queue.
-5.Vmquota checks the resource usage from openstack or opennebula cluster.
-6.Vmquota allocates resources for the requested Group1 queue and reserve the resource for a peroid of time.
-7.Vcondor informs openstack or opennebul cluster to start vm.
-8.The cluster starts vm.
-9.Vm starts the condor service,and join to the condor pool.
-10-11.The job in condor server will be pushed to the vm and starts to run.
+1. An user in Group1 submit a batch of jobs.
+
+2. The jobs come into condor pool.Diffrent job is in diffrent queue. 
+
+3. Vcondor regularly checks job information and job queue changes in the condor to find the queue job.
+
+4. Vcondor request vmquota to get available resource for the Group1 queue.
+
+5. Vmquota checks the resource usage from openstack or opennebula cluster.
+
+6. Vmquota allocates resources for the requested Group1 queue and reserve the resource for a peroid of time.
+
+7. Vcondor informs openstack or opennebul cluster to start vm.
+
+8. The cluster starts vm.
+
+9. Vm starts the condor service,and join to the condor pool.
+
+10-11. The job in condor server will be pushed to the vm and starts to run.
+
