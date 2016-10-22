@@ -45,7 +45,8 @@ except:
 
 ACTIVE_SET = [0,'Busy']
 INACTIVE_SET = [1,'Idle']
-ALL_STATUS_SET = [0,1,'Busy','Idle']
+WrongStatus_SET = [-1,'Null']
+ALL_STATUS_SET = [0,1,-1,'Busy','Idle','Null']
 vr_request = {}
 data_response = {}
 vr_url=''
@@ -53,7 +54,7 @@ MIN_VM = 20
 MAX_VM = 40
 jc = None
 flag = 'true'
-
+logger = None
 
 ##
 ## Functions
@@ -120,7 +121,10 @@ def VmSchedule(group_name_list):
     JobPool = job_management.JobPool(name='condor', condor_query_type='local')
 
     while(EnableToRun):
-        config.setup()
+        logger.debug('*****************************************************')
+        logger.debug('A New Round of VmSchedule!')
+        logger.debug('*****************************************************')
+
         try:
             jc = JClient(host=config.VMQuotaIp, port=config.VMQuotaPort, bufsize=1024, allow_reuse_addr=True)
         except Exception,e:
@@ -225,8 +229,13 @@ def VmSchedule(group_name_list):
 
         num_vm_busy = Cluster.num_vms_by_group_activity(vms=vms_new,group=group_name_list,activity=ACTIVE_SET)
         logger.info("Group: %s num_vm_busy: %s " % (group_name_list,num_vm_busy))
+
         num_vm_idle = Cluster.num_vms_by_group_activity(vms=vms_new,group=group_name_list,activity=INACTIVE_SET)
         logger.info("Group: %s num_vm_idle: %s " % (group_name_list,num_vm_idle))
+
+        num_vm_abnormal = Cluster.num_vms_by_group_activity(vms=vms_new,group=group_name_list,activity=WrongStatus_SET)
+        logger.info("Group: %s num_vm_abnormal: %s. I think these vms are not in Condor Pool!" % (group_name_list,num_vm_abnormal))
+
         num_vm_all = num_vm_busy+num_vm_idle
         logger.info("Group: %s num_vm_all: %s " % (group_name_list,num_vm_all))
 
@@ -345,7 +354,13 @@ def VmSchedule(group_name_list):
         for tr in CreateVmThread:
             tr.join()
 
-        
+         if (num_vm_abnormal>0):
+            try:
+                cluster.vm_destroy_by_Group_JobActivity(count=num_vm_abnormal,group=group_name_list,activity=WrongStatus_SET,vms=vms_new)
+            except Exception as e:
+                logger.error("Unable to destroy %d abnormal vms for group %s \n %s" 
+        			    % (num_vm_abnormal,'|'.join(group_name_list),e))
+       
         if (num_vm_to_destroy>0 and num_vm_to_destroy<=num_vm_idle):
             try:
                 Cluster.vm_destroy_by_Group_JobActivity(count=num_vm_to_destroy,group=group_name_list,activity=INACTIVE_SET,vms=vms_new)
@@ -359,6 +374,11 @@ def VmSchedule(group_name_list):
                 logger.error("Unable to destroy %d instances for group %s." 
                         % (num_vm_to_destroy,'|'.join(group_name_list)))
 
+        config.setup()
+        if config.EnableToRun=='true':
+            EnableToRun = True
+        else:
+            EnableToRun = False
         time.sleep(config.VmSchedule_interval)
         
     return 0

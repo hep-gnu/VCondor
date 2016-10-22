@@ -96,11 +96,14 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
         vms = []
         try:
             cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a describe -r compute -o json_pretty" %(config.EndPoint,config.Username,config.Password)
+            self.logger.info(cmd)
             sp = subprocess.Popen(cmd, shell=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (response, err) = sp.communicate(input=None)
+            self.logger.debug('occi cmd out:%s err:%s' % (response, err))
             returncode = sp.returncode
             response = utilities.JSONDecode(response)
+            self.logger.debug('Response to json output:%s' % response)
         except Exception as e:
             self.logger.error("Unable to get instance list by rOCCI: %s" % e)
             return 0
@@ -108,15 +111,17 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
         try:
             instance_num = len(response)
         except Exception as e:
-            self.logger.error("Unable to get instance num by rOCCI.")
+            self.logger.error("Unable to get instance num by rOCCI. Exception:%s" % e)
             return 0
 
         for instance in response:
+            self.logger.debug('Next is a instance descrption:')
+            self.logger.debug('%s' % instance)
             try:
                 _uuid = instance['attributes']['occi']['core']['id']
                 _name = instance['attributes']['occi']['core']['title']
             except Exception as e:
-                self.logger.error('Unable to get VM name and VM uuid.')
+                self.logger.error('Unable to get VM name and VM uuid. Exception:%s' % e)
                 _uuid = ''
                 _name = ''
 
@@ -125,7 +130,7 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                 _ipaddress = instance['links'][1]['attributes']['occi']['networkinterface']['address']
                 _macaddress = instance['links'][1]['attributes']['occi']['networkinterface']['mac']
             except Exception as e:
-                self.logger.error('Unable to get VM:%s network information.' % _uuid)
+                self.logger.error('Unable to get VM:%s network information. Exception:%s' % _(uuid,e))
                 _network = ''
                 _ipaddress = ''
                 _macaddress = ''
@@ -137,7 +142,7 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                     if len(_temp)>1:
                         _os_tpl = _temp[1]
             except Exception as e:
-                self.logger.error('Unable to get VM:%s os_tpl information.' % _uuid)
+                self.logger.error('Unable to get VM:%s os_tpl information. Exception:%s' % _(uuid,e))
                 _os_tpl = ''
 
             _flavor = ''
@@ -150,7 +155,7 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                 vms.append(new_vm)
             except Exception as e:
                 print e
-                self.logger.error('Unable to create a VM object for VM:%s.' % _uuid)
+                self.logger.error('Unable to create a VM object for VM:%s. Exception:%s' % _(uuid,e))
                 return 0
 
         return vms
@@ -217,15 +222,18 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                 vms_by_group.append(vm)
         return vms_by_group
 
-    @staticmethod
-    def get_vms_by_group_activity(group,activity,vms):
+
+    def get_vms_by_group_activity(self,group,activity,vms):
         """Return the number of VMs which belongs to a certain VM and a certain activity.
         """
         vms_by_group_activity = []
         for vm in vms:
+            self.logger.debug('group = %s,activity = %s,vm.group = %s,vm.activity=%s' 
+                    % (group,activity,vm.group,vm.activity))
             if(str(group).find(vm.group)>0 or str(vm.group).find(str(group))>0):
                 if (str(activity).find(vm.activity)>0 or str(vm.activity).find(str(activity))>0):
                     vms_by_group_activity.append(vm)
+        self.logger.debug('Find those vms:%s' % vms_by_group_activity)
         return vms_by_group_activity
 
 
@@ -250,11 +258,12 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
         VmId = ''
         try:
             cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a create -r compute --mixin os_tpl#%s --mixin resource_tpl#%s -t occi.core.title=%s" %(config.EndPoint,config.Username,config.Password,imageId,instance_flavorId,vm_name)
-            print cmd
+            self.logger.info(cmd)
             sp = subprocess.Popen(cmd, shell=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (out, err) = sp.communicate(input=None)
             returncode = sp.returncode
+            self.logger.debug('returncode:%s out:%s err:%s' % (returncode,out,err))
             if returncode != 0:
                 self.logger.error("Unable to launch a VM by rOCCI.You shall check this message.\n%s\n%s" % (out, err))
                 return 0
@@ -273,33 +282,31 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                 self.logger.error("Unable to get ipaddress from VM %s.I had to shut it down." % VmId)
 
                 try:
-                    cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a unlink -r %s" % (config.EndPoint,config.Username,config.Password,VmId)
-                    sp = subprocess.Popen(cmd, shell=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    (out, err) = sp.communicate(input=None)
-                except:
-                    self.logger.error("Failed to unlink VM %s" % VmId)
-                    return 0
-
-                try:
                     cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a delete -r %s" % (config.EndPoint,config.Username,config.Password,VmId)
+                    self.logger.info(cmd)
                     sp = subprocess.Popen(cmd, shell=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     (out, err) = sp.communicate(input=None)
+                    self.logger.debug('out:%s err:%s' % (out,err))
                 except:
-                     self.logger.error("Failed to delete VM %s" % VmId)
+                     self.logger.error("Failed to delete VM %s Exception %s" % (VmId,e))
                      return 0
                 break
 
             try:
                 cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a describe -o json_pretty -r %s" %(config.EndPoint,config.Username,config.Password,VmId)
+                self.logger.debug(cmd)
                 sp = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 (out, err) = sp.communicate(input=None)
+                self.logger.debug('out:%s err:%s' % (out,err))
                 out = utilities.JSONDecode(out)
+                self.logger.debug('convert out to json: %s' % out)
                 _ipaddress = out[0]['links'][1]['attributes']['occi']['networkinterface']['address']
+                self.logger.debug('New vm ip %s' % _ipaddress)
                 break
             except Exception as e:
+                self.logger.error('Exception when trying to get ip from a new VM: %s' % e)
                 continue
         self.logger.info("Create an instance! %s %s " % (VmId,_ipaddress))
         result = self._checkVmInCondor(vm_ip=_ipaddress,group=group,tm=config.Timeout,HopeValue=0)
@@ -308,22 +315,14 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                               I had to shut it down" % (_ipaddress,VmId,group)) 
 
             try:
-                cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a unlink -r %s" % (config.EndPoint,config.Username,config.Password,VmId)
-                sp = subprocess.Popen(cmd, shell=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (out, err) = sp.communicate(input=None)
-            except:
-                self.logger.error("Failed to unlink VM %s" % VmId)
-                return 0
-
-
-            try:
                 cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a delete -r %s" % (config.EndPoint,config.Username,config.Password,VmId)
+                self.logger.info(cmd)
                 sp = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 (out, err) = sp.communicate(input=None)
-            except:
-                self.logger.error("Failed to delete VM %s" % VmId)
+                self.logger.debug('out:%s err:%s' % (out,err))
+            except Exception as e:
+                self.logger.error("Failed to delete VM %s Exception:%s" % (VmId,e))
                 return 0
         thread.exit_thread()
        
@@ -336,7 +335,6 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
             tm = tm-10
             try:
                 cmd = config.condor_status_shortcmd[group] + " -format \"%%s\\n\" StartdIpAddr|grep '%s:'" % vm_ip
-                print cmd
                 sp = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 (out, err) = sp.communicate(input=None)
@@ -390,11 +388,11 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
 
     def vm_destroy_by_Group_JobActivity(self,count=0,group=[],activity=[],vms=[]):
         """ Destroy  VMs on Openenbula which runs specific jobs in specifc activity of the group."""
-        VmsTemp = self.get_vms_by_group_activity(group,activity,vms)
+        VmsTemp = self.get_vms_by_group_activity(group,activity,vms,)
         try:
             NumList = random.sample(range(len(VmsTemp)),count)
         except Exception as e:
-            self.logger.error("Encounting an error when trying to create some random numbers from 0 to %d." % len(NumList)-1)
+            self.logger.error("Encounting an error when trying to create some random numbers from 0 to %d. Exception:%s" % (len(NumList)-1,e))
 
         threads = []
         for number in NumList:
@@ -403,7 +401,7 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
                 threads.append(t)
             except Exception as e:
                 self.logger.error("Encounting an error when trying to destroy some vms on Opennebula which runs \
-                            specific jobs in %s activity of the group %s." % (activity,group))
+                        specific jobs in %s activity of the group %s. Exception:%s" % (activity,group,e))
                 return 0
         for tr in threads:
             tr.start()
@@ -415,28 +413,21 @@ class OpennebulaCluster(cluster_tools.ICluster,cluster_tools.VM):
         """ Destroy a VM on Opennebula."""
         VmId = vm.uuid
         try:
-            cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a unlink -r /compute/%s" % (config.EndPoint,config.Username,config.Password,VmId)
-            print cmd
-            sp = subprocess.Popen(cmd, shell=True,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            (out, err) = sp.communicate(input=None)
-        except:
-            self.logger.error("Failed to unlink VM %s" % VmId)
-            return 0
-            thread.exit_thread()
-
-        try:
             cmd = "occi -s -e %s -n basic -u '%s' -p '%s' -a delete -r /compute/%s" % (config.EndPoint,config.Username,config.Password,VmId)
-            print cmd
+            self.logger.info(cmd)
             sp = subprocess.Popen(cmd, shell=True,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (out, err) = sp.communicate(input=None)
-        except:
-            self.logger.error("Failed to delete VM %s" % VmId)
+            self.logger.debug('out:%s err:%s' % (out,err))
+        except Exception as e:
+            self.logger.error("Failed to delete VM %s. Exception:%s" % (VmId,e))
             return 0
             thread.exit_thread()
  
         thread.exit_thread()
 
 
+
+
+ 
         

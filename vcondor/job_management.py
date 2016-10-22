@@ -171,7 +171,9 @@ class JobPool(Job):
                 if str(Group).find(str(job.Group))>0:
                     if(job.JobStatus>0):
                         if(Job.statuses[job.JobStatus-1]==JobStatus):
-                            job_count += 1		
+                            job_count += 1
+                #self.logger.debug("Find the job whose Group is %s and status is %s, this Job Group is %s, \
+                #        status is %s ,job_count=%s" % (Group,JobStatus,job.Group,Job.statuses[job.JobStatus-1],job_count))
             return job_count
         except:
             return 0
@@ -183,22 +185,27 @@ class JobPool(Job):
             sp = subprocess.Popen(condor_q, shell=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (condor_out, condor_err) = sp.communicate(input=None)
+            self.logger.debug('Query condor jobs out:%s' % condor_out)
+            self.logger.debug('Query condor jobs err:%s' % condor_err)
             returncode = sp.returncode
         except Exception, e:
-            self.logger.error("Problem running %s, unexpected error" % string.join(config.condor_q_command, " "))
+            self.logger.error("Problem running %s, unexpected error %s" % (config.condor_q_command,e))
             return None
 
         if returncode != 0:
-            self.logger.error("Got non-zero return code '%s' from '%s'. stderr was: %s" %
-                              (returncode, string.join(condor_q, " "), condor_err))
+            self.logger.error("Got non-zero return code '%s' from '%s'. stdout was: %s stderr was: %s" %
+                              (returncode, condor_q, condor_out,condor_err))
             return None
         
-        job_ads = self._condor_q_to_job_list(condor_out)
         self.last_query = datetime.datetime.now()
-        return job_ads
+        try:
+            job_ads = self._condor_q_to_job_list(condor_out)
+            return job_ads
+        except Exception as e:
+            self.logger.error('Exception when trying to convert the output of condor_q %s' % e)
+            return None
     
-    @staticmethod
-    def _condor_q_to_job_list(condor_q_output):
+    def _condor_q_to_job_list(self,condor_q_output):
         """
         _condor_q_to_job_list - Converts the output of condor_q
                 to a list of Job Objects
@@ -238,6 +245,7 @@ class JobPool(Job):
                 jobs.append(Job(**classad))
             except ValueError:
                 self.logger.error("Failed to add job: %s due to Value Errors in jdl." % classad["GlobalJobId"])
+            #self.logger.debug("Find a new job by condor_q: %s" % classad)
             #except:
                 #self.logger.error("Failed to add job: %s due to unspecified exception." % classad["GlobalJobId"])
                                     

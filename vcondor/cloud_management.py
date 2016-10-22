@@ -15,6 +15,7 @@ import logging
 import logging.handlers
 import threading
 import subprocess
+import sys
 from decimal import *
 from collections import defaultdict
 
@@ -78,19 +79,21 @@ class ResourcePool():
             sp = subprocess.Popen(condor_status, shell=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (condor_out, condor_err) = sp.communicate(input=None)
+            self.logger.debug("Query Condor Worker Node out: %s" % condor_out)
+            self.logger.debug("Query Condor Worker Node err: %s" % condor_out)
 	    
         except OSError:
             self.logger.error("OSError occured while doing condor_status - will try again next cycle.")
             return []
         except:
-            self.logger.error("Problem running %s, unexpected error: %s" % (string.join(condor_status, " "), condor_err))
+            self.logger.error("Problem running %s, unexpected error: %s" % (condor_status, condor_err))
             return []
 	
         return self._condor_status_to_machine_list(condor_out)
 
 
-    @staticmethod
-    def _condor_status_to_machine_list(condor_status_output):
+    
+    def _condor_status_to_machine_list(self,condor_status_output):
         """
         _condor_status_to_machine_list - Converts the output of
                condor_status -l to a list of dictionaries with the attributes
@@ -100,24 +103,42 @@ class ResourcePool():
 
         machines = []
 
-        # Each classad is seperated by '\n\n'
-        raw_machine_classads = condor_status_output.split("\n\n")
-        # Empty condor pools give us an empty string or stray \n in our list
-        raw_machine_classads = filter(lambda x: x != "" and x != "\n", raw_machine_classads)
+        try:
+            # Each classad is seperated by '\n\n'
+            raw_machine_classads = condor_status_output.split("\n\n")
+            # Empty condor pools give us an empty string or stray \n in our list
+            raw_machine_classads = filter(lambda x: x != "" and x != "\n", raw_machine_classads)
 
-        for raw_classad in raw_machine_classads:
-            classad = {}
-            classad_lines = raw_classad.splitlines()
-            for classad_line in classad_lines:
-                classad_line = classad_line.strip()
-                (classad_key, classad_value) = classad_line.split(" = ", 1)
-                classad_value = classad_value.strip('"')
-                if classad_key in ['Machine','HardwareAddress','Activity','Name','Start','AccountingGroup','RemoteOwner','RemoteUser','JobId','GlobalJobId']:
-                    classad[classad_key] = classad_value
+            for raw_classad in raw_machine_classads:
+                classad = {}
+                classad_lines = raw_classad.splitlines()
+                for classad_line in classad_lines:
+                    classad_line = classad_line.strip()
+                    (classad_key, classad_value) = classad_line.split(" = ", 1)
+                    classad_value = classad_value.strip('"')
+                    #self.logger.debug('Attributes of a condor worker node:')
+                    if classad_key in ['Machine','HardwareAddress','MyAddress','Activity','Name','Start','AccountingGroup','RemoteOwner','RemoteUser','JobId','GlobalJobId']:
+                        classad[classad_key] = classad_value
 
-            machines.append(classad)
+                self.logger.debug('%s ' % classad)
+                machines.append(classad)
+        except Exception as e:
+            self.logger.error('Exception occured when trying to convert the output of condor_status -l: %s' % e)
 
         return machines
+
+
+    def update_vmslist_by_image(self, vms, ImageName, Group):
+        try:
+            for vm in vms:
+                if vm.image_name == ImageName:
+                    vm.resource_group_str = repr(Group)
+                    vm.group = repr(Group)
+                    vm.activity = 'Null'
+        except Exception as e:
+            print e
+            self.logger.error('Exception when trying to update vms Group by image_name:%s Exception:%s' % (ImageName,e))
+        return vms
 
 
     def update_vmslist_from_machinelist(self, vms, machinelist):
@@ -129,19 +150,6 @@ class ResourcePool():
                      remote_owner = slot_type = total_slots = ""
                 if machine.has_key('Machine'):
                     hostname = machine['Machine']
-                if machine.has_key('Start'):
-                    temp_group = machine['Start'].split('"',-1)
-		    lenth = len(temp_group)
-		    num = lenth
-		    resource_group_list = []
-		    while (num>1):
-			num -= 2
-			resource_group_list.append(temp_group[num])
-                    resource_group_list.reverse()
-		    resource_group_str = "|".join(
-                                        i for i in resource_group_list)	
-
-	    
                 if machine.has_key('Activity'):
                     activity = machine['Activity']
                 if machine.has_key('RemoteOwner'):
@@ -154,8 +162,8 @@ class ResourcePool():
                     IpAddress = machine['MyAddress'].split('<')[1].split(':')[0]
 
                 try:
-                    self.update_job_status_for_vm(vms,MacAddress,resource_group_str,resource_group_str,owner,activity,jobid,hostname)
-                    self.update_job_status_for_vm(vms,IpAddress,resource_group_str,resource_group_str,owner,activity,jobid,hostname)
+                    self.update_job_status_for_vm(vms,MacAddress,owner,activity,jobid,hostname)
+                    self.update_job_status_for_vm(vms,IpAddress,owner,activity,jobid,hostname)
                 except Exception, e:
                     #self.logger.error("Failed to update a VM Obj by condor_status command!")
                     print e
@@ -174,20 +182,18 @@ class ResourcePool():
         	return vm
         return None
 
-    def update_job_status_for_vm(self,vms,address,resource_group_str='',group='',owner='',activity='',jobid='',hostname=''):
+    def update_job_status_for_vm(self,vms,address,owner='',activity='',jobid='',hostname=''):
         """For a certain vm object, update status of the job running on it."""
 	for vm in vms:
 	    if (vm.ipaddress==address) or (vm.macaddress==address):
         	try:
-                    vm.resource_group_str = repr(resource_group_str)
-            	    vm.group = repr(group)
             	    vm.owner = repr(owner)
             	    vm.activity = repr(activity)
             	    vm.jobid = repr(jobid)
             	    vm.hostname = repr(hostname)
        		except Exception, e:
             	    print e
-                    self.logger.error("Unable to update job status for a certain VM: %s %s" % (vm.id,vm.name))
+                    self.logger.error("Unable to update job status for a certain VM: %s %s Exception:%s" % (vm.id,vm.name,e))
 		    return 0
 		return 1
         return None

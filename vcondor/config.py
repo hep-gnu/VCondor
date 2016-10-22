@@ -9,6 +9,7 @@
 # ******************************************************
 import os
 import sys
+import logging
 from urlparse import urlparse
 import ConfigParser
 
@@ -387,6 +388,17 @@ def setup(path=None):
     # Default Logging options
     if config_file.has_option("logging", "log_level"):
         log_level = config_file.get("logging", "log_level")
+        if log_level == 'INFO':
+            log_level = logging.INFO
+        if log_level == 'DEBUG':
+            log_level = logging.DEBUG
+        if log_level == 'WARNING':
+            log_level = logging.WARNING
+        if log_level == 'ERROR':
+            log_level = logging.ERROR
+        if log_level == 'CRITICAL':
+            log_level = logging.CRITICAL
+
 
     if config_file.has_option("logging", "log_file"):
         log_file = os.path.expanduser(config_file.get("logging", "log_file"))
